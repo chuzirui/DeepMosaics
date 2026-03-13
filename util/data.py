@@ -16,6 +16,7 @@ def _get_device(gpu_id):
     return torch.device('cpu')
 
 def to_tensor(data,gpu_id):
+    data = np.ascontiguousarray(data)
     data = torch.from_numpy(data)
     device = _get_device(gpu_id)
     if device.type != 'cpu':
@@ -69,7 +70,7 @@ def im2tensor(image_numpy, gray=False,bgr2rgb = True, reshape = True, gpu_id = '
             image_numpy = image_numpy/255.0
         else:
             image_numpy = (image_numpy/255.0-0.5)/0.5
-        image_numpy = image_numpy.transpose((2, 0, 1))
+        image_numpy = np.ascontiguousarray(image_numpy.transpose((2, 0, 1)))
         image_tensor = torch.from_numpy(image_numpy).float()
         if reshape:
             image_tensor = image_tensor.reshape(1,ch,h,w)

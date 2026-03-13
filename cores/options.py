@@ -74,11 +74,13 @@ class Options():
         if test_flag:
             if not os.path.exists(self.opt.media_path):
                 print('Error: Media does not exist!')
-                input('Please press any key to exit.\n')
+                if sys.stdin.isatty():
+                    input('Please press any key to exit.\n')
                 sys.exit(0)
             if not os.path.exists(self.opt.model_path):
                 print('Error: Model does not exist!')
-                input('Please press any key to exit.\n')
+                if sys.stdin.isatty():
+                    input('Please press any key to exit.\n')
                 sys.exit(0)
 
             if self.opt.mode == 'auto':
@@ -90,7 +92,8 @@ class Options():
                     self.opt.mode = 'style'
                 else:
                     print('Please check model_path!')
-                    input('Please press any key to exit.\n')
+                    if sys.stdin.isatty():
+                        input('Please press any key to exit.\n')
                     sys.exit(0)
 
             if self.opt.output_size == 0 and self.opt.mode == 'style':
@@ -110,7 +113,8 @@ class Options():
                     self.opt.netG = 'video'
                 else:
                     print('Type of Generator error!')
-                    input('Please press any key to exit.\n')
+                    if sys.stdin.isatty():
+                        input('Please press any key to exit.\n')
                     sys.exit(0)
 
             if self.opt.ex_mult == 'auto':
@@ -126,8 +130,9 @@ class Options():
                 if os.path.isfile(_path):
                     self.opt.mosaic_position_model_path = _path
                 else:
-                    input('Please check mosaic_position_model_path!')
-                    input('Please press any key to exit.\n')
+                    print('Please check mosaic_position_model_path!')
+                    if sys.stdin.isatty():
+                        input('Please press any key to exit.\n')
                     sys.exit(0)
 
         return self.opt
