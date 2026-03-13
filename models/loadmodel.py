@@ -19,7 +19,7 @@ def pix2pix(opt):
     else:
         netG = pix2pix_G(3, 3, 64, opt.netG, norm='batch',use_dropout=True, init_type='normal', gpu_ids=[])
     show_paramsnumber(netG,'netG')
-    netG.load_state_dict(torch.load(opt.model_path))
+    netG.load_state_dict(torch.load(opt.model_path, weights_only=False))
     netG = model_util.todevice(netG,opt.gpu_id)
     netG.eval()
     return netG
@@ -37,7 +37,7 @@ def style(opt):
         netG = netG.module
     # if you are using PyTorch newer than 0.4 (e.g., built from
     # GitHub source), you can remove str() on self.device
-    state_dict = torch.load(opt.model_path, map_location='cpu')
+    state_dict = torch.load(opt.model_path, map_location='cpu', weights_only=False)
     if hasattr(state_dict, '_metadata'):
         del state_dict._metadata
 
@@ -53,7 +53,7 @@ def style(opt):
 def video(opt):
     netG = video_G(N=2,n_blocks=4,gpu_id=opt.gpu_id)
     show_paramsnumber(netG,'netG')
-    netG.load_state_dict(torch.load(opt.model_path))
+    netG.load_state_dict(torch.load(opt.model_path, weights_only=False))
     netG = model_util.todevice(netG,opt.gpu_id)
     netG.eval()
     return netG
@@ -65,9 +65,9 @@ def bisenet(opt,type='roi'):
     net = BiSeNet(num_classes=1, context_path='resnet18',train_flag=False)
     show_paramsnumber(net,'segment')
     if type == 'roi':
-        net.load_state_dict(torch.load(opt.model_path))
+        net.load_state_dict(torch.load(opt.model_path, weights_only=False))
     elif type == 'mosaic':
-        net.load_state_dict(torch.load(opt.mosaic_position_model_path))
+        net.load_state_dict(torch.load(opt.mosaic_position_model_path, weights_only=False))
     net = model_util.todevice(net,opt.gpu_id)
     net.eval()
     return net

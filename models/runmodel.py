@@ -10,7 +10,8 @@ import numpy as np
 def run_segment(img,net,size = 360,gpu_id = '-1'):
     img = impro.resize(img,size)
     img = data.im2tensor(img,gpu_id = gpu_id, bgr2rgb = False, is0_1 = True)
-    mask = net(img)
+    with torch.no_grad():
+        mask = net(img)
     mask = data.tensor2im(mask, gray=True, is0_1 = True)
     return mask
 
@@ -20,7 +21,8 @@ def run_pix2pix(img,net,opt):
     else:
         img = impro.resize(img,128)
     img = data.im2tensor(img,gpu_id=opt.gpu_id)
-    img_fake = net(img)
+    with torch.no_grad():
+        img_fake = net(img)
     img_fake = data.tensor2im(img_fake)
     return img_fake
 

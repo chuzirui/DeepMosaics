@@ -33,7 +33,7 @@ def get_mosaic_positions(opt,netM,imagepaths,savemask=True):
         cv2.namedWindow('mosaic mask', cv2.WINDOW_NORMAL)
     print('Step:2/4 -- Find mosaic location')
 
-    img_read_pool = Queue(4)
+    img_read_pool = Queue(8)
     def loader(imagepaths):
         for imagepath in imagepaths:
             img_origin = impro.imread(os.path.join(opt.temp_dir+'/video2image',imagepath))
@@ -194,21 +194,54 @@ def cleanmosaic_video_fusion(opt,netG,netM):
     t.setDaemon(True)
     t.start()
 
+    # Prefetch all needed frame indices into a cache via background thread
+    img_cache = {}
+    prefetch_queue = Queue(16)
+    def prefetch_loader():
+        needed = set()
+        for i in range(length):
+            if i == 0:
+                for j in range(POOL_NUM):
+                    needed.add(np.clip(i+j-LEFT_FRAME,0,length-1))
+            else:
+                needed.add(np.clip(i+LEFT_FRAME,0,length-1))
+        for idx in sorted(needed):
+            img = impro.imread(os.path.join(opt.temp_dir+'/video2image',imagepaths[idx]))
+            prefetch_queue.put((idx, img))
+    prefetch_t = Thread(target=prefetch_loader)
+    prefetch_t.setDaemon(True)
+    prefetch_t.start()
+
+    def ensure_cached(idx):
+        while idx not in img_cache:
+            k, v = prefetch_queue.get()
+            img_cache[k] = v
+
     for i,imagepath in enumerate(imagepaths,0):
         x,y,size = positions[i][0],positions[i][1],positions[i][2]
         input_stream = []
-        # image read stream
-        if i==0 :# init
+        if i==0:
             for j in range(POOL_NUM):
-                img_pool.append(impro.imread(os.path.join(opt.temp_dir+'/video2image',imagepaths[np.clip(i+j-LEFT_FRAME,0,len(imagepaths)-1)])))
-        else: # load next frame
+                frame_idx = np.clip(i+j-LEFT_FRAME,0,length-1)
+                ensure_cached(frame_idx)
+                img_pool.append(img_cache[frame_idx])
+        else:
             img_pool.pop(0)
-            img_pool.append(impro.imread(os.path.join(opt.temp_dir+'/video2image',imagepaths[np.clip(i+LEFT_FRAME,0,len(imagepaths)-1)])))
+            frame_idx = np.clip(i+LEFT_FRAME,0,length-1)
+            ensure_cached(frame_idx)
+            img_pool.append(img_cache[frame_idx])
+            # Free frames we no longer need
+            old_idx = np.clip(i-LEFT_FRAME-1,0,length-1)
+            img_cache.pop(old_idx, None)
         img_origin = img_pool[LEFT_FRAME]
 
         # preview result and print
         if not opt.no_preview:
-            if show_pool.qsize()>3:   
+            try:
+                pool_full = show_pool.qsize() > 3
+            except NotImplementedError:
+                pool_full = not show_pool.empty()
+            if pool_full:
                 cv2.imshow('clean',show_pool.get())
                 cv2.waitKey(1) & 0xFF
 

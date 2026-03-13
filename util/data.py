@@ -8,10 +8,18 @@ import cv2
 from . import image_processing as impro
 from . import degradater
 
+def _get_device(gpu_id):
+    if gpu_id == 'mps':
+        return torch.device('mps')
+    elif gpu_id != '-1':
+        return torch.device('cuda')
+    return torch.device('cpu')
+
 def to_tensor(data,gpu_id):
     data = torch.from_numpy(data)
-    if gpu_id != '-1':
-        data = data.cuda()
+    device = _get_device(gpu_id)
+    if device.type != 'cpu':
+        data = data.to(device)
     return data
 
 def normalize(data):
@@ -65,8 +73,9 @@ def im2tensor(image_numpy, gray=False,bgr2rgb = True, reshape = True, gpu_id = '
         image_tensor = torch.from_numpy(image_numpy).float()
         if reshape:
             image_tensor = image_tensor.reshape(1,ch,h,w)
-    if gpu_id != '-1':
-        image_tensor = image_tensor.cuda()
+    device = _get_device(gpu_id)
+    if device.type != 'cpu':
+        image_tensor = image_tensor.to(device)
     return image_tensor
 
 def shuffledata(data,target):

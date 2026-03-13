@@ -61,9 +61,12 @@ class Options():
         self.opt.temp_dir = os.path.join(self.opt.temp_dir, 'DeepMosaics_temp')
 
         if self.opt.gpu_id != '-1':
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(self.opt.gpu_id)
             import torch
-            if not torch.cuda.is_available():
+            if torch.cuda.is_available():
+                os.environ["CUDA_VISIBLE_DEVICES"] = str(self.opt.gpu_id)
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                self.opt.gpu_id = 'mps'
+            else:
                 self.opt.gpu_id = '-1'
         # else:
         #     self.opt.gpu_id = '-1'
