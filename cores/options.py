@@ -33,7 +33,8 @@ class Options():
         self.parser.add_argument('--mosaic_size', type=int, default=0,help='mosaic size,if 0 auto size')
         self.parser.add_argument('--mask_extend', type=int, default=10,help='extend mosaic area')
         
-        #CleanMosaic     
+        #CleanMosaic
+        self.parser.add_argument('--enhance', action='store_true', help='if specified, apply Real-ESRGAN to enhance cleaned mosaic patches')
         self.parser.add_argument('--mosaic_position_model_path', type=str, default='auto',help='name of model use to find mosaic position')
         self.parser.add_argument('--traditional', action='store_true', help='if specified, use traditional image processing methods to clean mosaic')
         self.parser.add_argument('--tr_blur', type=int, default=10, help='ksize of blur when using traditional method, it will affect final quality')

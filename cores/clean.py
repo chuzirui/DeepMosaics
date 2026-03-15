@@ -5,6 +5,7 @@ import cv2
 import torch
 from concurrent.futures import ThreadPoolExecutor
 from models import runmodel
+from models.enhancer import enhance_patch
 from util import data,util,ffmpeg,filt
 from util import image_processing as impro
 from .init import video_init
@@ -118,6 +119,8 @@ def cleanmosaic_img(opt,netG,netM):
             img_fake = runmodel.traditional_cleaner(img_mosaic,opt)
         else:
             img_fake = runmodel.run_pix2pix(img_mosaic,netG,opt)
+        if getattr(opt, 'enhance', False):
+            img_fake = enhance_patch(img_fake, opt.gpu_id)
         img_result = impro.replace_mosaic(img_origin,img_fake,mask,x,y,size,opt.no_feather)
     else:
         print('Do not find mosaic')
@@ -132,6 +135,8 @@ def cleanmosaic_img_server(opt,img_origin,netG,netM):
             img_fake = runmodel.traditional_cleaner(img_mosaic,opt)
         else:
             img_fake = runmodel.run_pix2pix(img_mosaic,netG,opt)
+        if getattr(opt, 'enhance', False):
+            img_fake = enhance_patch(img_fake, opt.gpu_id)
         img_result = impro.replace_mosaic(img_origin,img_fake,mask,x,y,size,opt.no_feather)
     return img_result
 
@@ -168,6 +173,8 @@ def cleanmosaic_video_byframe(opt,netG,netM):
                     img_fake = runmodel.traditional_cleaner(img_mosaic,opt)
                 else:
                     img_fake = runmodel.run_pix2pix(img_mosaic,netG,opt)
+                if getattr(opt, 'enhance', False):
+                    img_fake = enhance_patch(img_fake, opt.gpu_id)
                 mask = cv2.imread(os.path.join(opt.temp_dir+'/mosaic_mask',imagepath),0)
                 img_result = impro.replace_mosaic(img_origin,img_fake,mask,x,y,size,opt.no_feather)
             except Exception as e:
@@ -185,11 +192,11 @@ def cleanmosaic_video_byframe(opt,netG,netM):
             cv2.waitKey(1) & 0xFF
         t2 = time.time()
         print('\r',str(i+1)+'/'+str(length),util.get_bar(100*i/length,num=35),util.counttime(t1,t2,i+1,len(imagepaths)),end='')
-    print()
-    write_exec.shutdown(wait=True)
+    print(flush=True)
+    write_exec.shutdown(wait=True, cancel_futures=False)
     if not opt.no_preview:
         cv2.destroyAllWindows()
-    print('Step:4/4 -- Convert images to video')
+    print('Step:4/4 -- Convert images to video', flush=True)
     ffmpeg.image2video( fps,
                 opt.temp_dir+'/replace_mosaic/output_%06d.'+opt.tempimage_type,
                 opt.temp_dir+'/voice_tmp.mp3',
@@ -233,27 +240,38 @@ def cleanmosaic_video_fusion(opt,netG,netM):
 
     write_executor = ThreadPoolExecutor(max_workers=WRITE_WORKERS)
 
-    # Prefetch all needed frame indices into a cache via background thread
     img_cache = {}
     prefetch_queue = Queue(16)
+    _prefetch_error = [None]
+
     def prefetch_loader():
-        needed = set()
-        for i in range(length):
-            if i == 0:
-                for j in range(POOL_NUM):
-                    needed.add(np.clip(i+j-LEFT_FRAME,0,length-1))
-            else:
-                needed.add(np.clip(i+LEFT_FRAME,0,length-1))
-        for idx in sorted(needed):
-            img = impro.imread(os.path.join(opt.temp_dir+'/video2image',imagepaths[idx]))
-            prefetch_queue.put((idx, img))
-    prefetch_t = Thread(target=prefetch_loader)
-    prefetch_t.setDaemon(True)
+        try:
+            needed = set()
+            for i in range(length):
+                if i == 0:
+                    for j in range(POOL_NUM):
+                        needed.add(np.clip(i+j-LEFT_FRAME,0,length-1))
+                else:
+                    needed.add(np.clip(i+LEFT_FRAME,0,length-1))
+            for idx in sorted(needed):
+                img = impro.imread(os.path.join(opt.temp_dir+'/video2image',imagepaths[idx]))
+                prefetch_queue.put((idx, img))
+        except Exception as e:
+            _prefetch_error[0] = e
+        finally:
+            prefetch_queue.put(None)
+
+    prefetch_t = Thread(target=prefetch_loader, daemon=True)
     prefetch_t.start()
 
     def ensure_cached(idx):
         while idx not in img_cache:
-            k, v = prefetch_queue.get()
+            item = prefetch_queue.get(timeout=30)
+            if item is None:
+                if _prefetch_error[0]:
+                    raise RuntimeError('Prefetch failed: %s' % _prefetch_error[0])
+                return
+            k, v = item
             img_cache[k] = v
 
     for i,imagepath in enumerate(imagepaths,0):
@@ -302,6 +320,8 @@ def cleanmosaic_video_fusion(opt,netG,netM):
                     else:
                         unmosaic_pred = netG(input_stream,previous_frame)
                 img_fake = data.tensor2im(unmosaic_pred,rgb2bgr = True)
+                if getattr(opt, 'enhance', False):
+                    img_fake = enhance_patch(img_fake, opt.gpu_id)
                 previous_frame = unmosaic_pred
                 write_executor.submit(write_single, False, imagepath, img_origin.copy(), img_fake.copy(), x, y, size)
             except Exception as e:
@@ -313,13 +333,13 @@ def cleanmosaic_video_fusion(opt,netG,netM):
         
         t2 = time.time()
         print('\r',str(i+1)+'/'+str(length),util.get_bar(100*i/length,num=35),util.counttime(t1,t2,i+1,len(imagepaths)),end='')
-    print()
-    write_executor.shutdown(wait=True)
+    print(flush=True)
+    write_executor.shutdown(wait=True, cancel_futures=False)
     while not show_pool.empty():
         show_pool.get_nowait()
     if not opt.no_preview:
         cv2.destroyAllWindows()
-    print('Step:4/4 -- Convert images to video')
+    print('Step:4/4 -- Convert images to video', flush=True)
     ffmpeg.image2video( fps,
                 opt.temp_dir+'/replace_mosaic/output_%06d.'+opt.tempimage_type,
                 opt.temp_dir+'/voice_tmp.mp3',
